@@ -72,8 +72,6 @@ func main() {
 
 	sendJobsEmail(jobs)
 
-	fmt.Println("Done")
-
 }
 
 func sendJobsEmail(jobs []string) {
@@ -137,7 +135,7 @@ func saveJobsCache(jobsCache JobsCache) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+
 	ioutil.WriteFile(JOBS_CACHE_FILENAME, b, 0644)
 }
 
