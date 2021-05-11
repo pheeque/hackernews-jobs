@@ -24,7 +24,10 @@ type JobsCache struct {
 func main() {
 	viper.SetEnvPrefix("HNJ")
 	viper.BindEnv("START_DATE")
-	startDate, _ := time.Parse("2006-01", viper.GetString("START_DATE"))
+	startDate, err := time.Parse("2006-01", viper.GetString("START_DATE"))
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	res, err := http.Get("https://news.ycombinator.com/submitted?id=whoishiring")
 	if err != nil {
@@ -45,9 +48,16 @@ func main() {
 	doc.Find(".athing .storylink").Each(func(i int, s *goquery.Selection) {
 		date := regexp.MustCompile(`\(.*\)$`).FindString(s.Text())
 		date = date[1 : len(date)-1]
-		storyDate, _ := time.Parse("January 2006", date)
+		storyDate, err := time.Parse("January 2006", date)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-		isFreelancer, _ := regexp.MatchString(`Freelancer`, s.Text())
+		isFreelancer, err := regexp.MatchString(`Freelancer`, s.Text())
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		if storyDate.After(startDate) && isFreelancer {
 			links = append(links, "https://news.ycombinator.com/"+s.AttrOr("href", ""))
 		}
@@ -106,13 +116,16 @@ func sendJobsEmail(jobs []string) {
 
 func getJobsCache() JobsCache {
 	jsonFile, err := os.Open(JOBS_CACHE_FILENAME)
-
 	if err != nil {
 		return JobsCache{Jobs: map[string]int{}}
 	}
 	defer jsonFile.Close()
 
-	byteValue, _ := ioutil.ReadAll(jsonFile)
+	byteValue, err := ioutil.ReadAll(jsonFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var jobs JobsCache
 	json.Unmarshal([]byte(byteValue), &jobs)
 
@@ -120,7 +133,11 @@ func getJobsCache() JobsCache {
 }
 
 func saveJobsCache(jobsCache JobsCache) {
-	b, _ := json.Marshal(jobsCache)
+	b, err := json.Marshal(jobsCache)
+	if err != nil {
+		log.Fatal(err)
+	}
+	
 	ioutil.WriteFile(JOBS_CACHE_FILENAME, b, 0644)
 }
 
