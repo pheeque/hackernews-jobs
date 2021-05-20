@@ -1,7 +1,7 @@
 ### hackernewsjobs
 Send an email of new jobs every set interval.
 
-# Installation
+## Installation
 Copy binary to desired directory and run. Use a cron to trigger the app based on your desired frequency.
 
 ### Configuration
@@ -15,7 +15,7 @@ The application requires the following environment variables.
 `HNJ_MAIL_USERNAME=`   
 `HNJ_MAIL_PASSWORD=`   
 
-### Roadmap
+## Roadmap
 - Filter jobs to be sent based on programming language.
 - Support for full time jobs
 - Reusable jobs cache
