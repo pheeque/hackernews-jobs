@@ -9,6 +9,7 @@ import (
 	"net/smtp"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -19,6 +20,11 @@ const JOBS_CACHE_FILENAME string = "jobs-cache.json"
 
 type JobsCache struct {
 	Jobs map[string]int
+}
+
+type Job struct {
+	text      string
+	monthYear string
 }
 
 func main() {
@@ -64,7 +70,7 @@ func main() {
 	})
 
 	//Get jobs from links
-	var jobs []string
+	var jobs []Job
 	for _, link := range links {
 		jobsCache := getJobsCache()
 		jobs = append(jobs, getJobs(link, jobsCache)...)
@@ -74,7 +80,7 @@ func main() {
 
 }
 
-func sendJobsEmail(jobs []string) {
+func sendJobsEmail(jobs []Job) {
 	if len(jobs) == 0 {
 		return
 	}
@@ -93,18 +99,22 @@ func sendJobsEmail(jobs []string) {
 	mailFrom := viper.GetString("MAIL_FROM")
 	mailTo := viper.GetString("MAIL_TO")
 
-	email := "Subject: Hackernews Jobs\r\n" +
-		"From: " + mailFrom + "\r\n" +
-		"To: " + mailTo + "\r\n" +
-		"\r\n"
+	var email strings.Builder
+
+	email.WriteString("Subject: Hackernews Jobs\r\n")
+	email.WriteString("From: " + mailFrom + "\r\n")
+	email.WriteString("To: " + mailTo + "\r\n")
+	email.WriteString("\r\n")
 
 	for _, job := range jobs {
-		email += job
+		jobString := job.monthYear + " " + job.text
+		email.WriteString(jobString[:len(jobString)-5])
+		email.WriteString("\n\n")
 	}
 
 	auth := smtp.PlainAuth("", smtpUsername, smtpPassword, smtpHost)
 
-	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, mailFrom, []string{mailTo}, []byte(email))
+	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, mailFrom, []string{mailTo}, []byte(email.String()))
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -139,8 +149,8 @@ func saveJobsCache(jobsCache JobsCache) {
 	ioutil.WriteFile(JOBS_CACHE_FILENAME, b, 0644)
 }
 
-func getJobs(link string, jobsCache JobsCache) []string {
-	jobs := make([]string, 0)
+func getJobs(link string, jobsCache JobsCache) []Job {
+	jobs := make([]Job, 0)
 
 	res, err := http.Get(link)
 	if err != nil {
@@ -156,6 +166,10 @@ func getJobs(link string, jobsCache JobsCache) []string {
 		log.Fatal(err)
 	}
 
+	pageTitle := doc.Find("table.fatitem .athing a.storylink").Text()
+	re := regexp.MustCompile("\\(.+\\)")
+	monthYear := re.FindString(pageTitle)
+
 	doc.Find(".athing").Each(func(i int, s *goquery.Selection) {
 		text := s.Find(".comment").Text()
 		commentLink := s.Find(".age a").AttrOr("href", "")
@@ -165,7 +179,10 @@ func getJobs(link string, jobsCache JobsCache) []string {
 			//if comment has not being saved before
 			_, found := jobsCache.Jobs[commentLink]
 			if !found {
-				jobs = append(jobs, text)
+				jobs = append(jobs, Job{
+					text:      strings.TrimSpace(text),
+					monthYear: monthYear,
+				})
 				jobsCache.Jobs[commentLink] = 1
 			}
 		}
