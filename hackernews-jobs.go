@@ -9,6 +9,7 @@ import (
 	"net/smtp"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ type JobsCache struct {
 type Job struct {
 	text      string
 	monthYear string
+	commentLink string
 }
 
 func main() {
@@ -101,17 +103,20 @@ func sendJobsEmail(jobs []Job) {
 
 	var email strings.Builder
 
-	email.WriteString("Subject: Hackernews Jobs\r\n")
+	email.WriteString("Subject: Hackernews Jobs [")
+	email.WriteString(strconv.Itoa(len(jobs)))
+	email.WriteString("]\r\n")
 	email.WriteString("From: " + mailFrom + "\r\n")
 	email.WriteString("To: " + mailTo + "\r\n")
+	email.WriteString("MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\r\n")
 	email.WriteString("\r\n")
 
 	for _, job := range jobs {
-		jobString := job.monthYear + " " + job.text
-		email.WriteString(jobString[:len(jobString)-5])
-		email.WriteString("\n\n")
+		email.WriteString(job.monthYear + " " + job.text)
+		email.WriteString("<br><a href=\"https://news.ycombinator.com/" + job.commentLink + "\">View post</a>")
+		email.WriteString("<br><br>")
 	}
-
+	
 	auth := smtp.PlainAuth("", smtpUsername, smtpPassword, smtpHost)
 
 	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, mailFrom, []string{mailTo}, []byte(email.String()))
@@ -171,7 +176,11 @@ func getJobs(link string, jobsCache JobsCache) []Job {
 	monthYear := re.FindString(pageTitle)
 
 	doc.Find(".athing").Each(func(i int, s *goquery.Selection) {
-		text := s.Find(".comment").Text()
+		text, err := s.Find(".comment").Html()
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		commentLink := s.Find(".age a").AttrOr("href", "")
 
 		re := regexp.MustCompile("SEEKING.+FREELANCER")
@@ -182,6 +191,7 @@ func getJobs(link string, jobsCache JobsCache) []Job {
 				jobs = append(jobs, Job{
 					text:      strings.TrimSpace(text),
 					monthYear: monthYear,
+					commentLink: commentLink,
 				})
 				jobsCache.Jobs[commentLink] = 1
 			}
