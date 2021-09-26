@@ -2,7 +2,7 @@
 Send an email of new jobs every set interval.
 
 ## Installation
-Copy binary to desired directory and run. Use a cron to trigger the app based on your desired frequency.
+Run `caprover deploy -d` to run docker deployment.
 
 ### Configuration
 The application requires the following environment variables.

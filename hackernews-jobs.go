@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/robfig/cron/v3"
 	"github.com/spf13/viper"
 )
 
@@ -24,13 +25,36 @@ type JobsCache struct {
 }
 
 type Job struct {
-	text      string
-	monthYear string
+	text        string
+	monthYear   string
 	commentLink string
 }
 
 func main() {
-	viper.SetEnvPrefix("HNJ")
+	log.SetOutput(os.Stdout)
+
+	log.Print("started")
+	c := cron.New()
+	c.AddFunc("@every 1h", func() {
+		run()
+
+		alertHealthchecks()
+	})
+	c.Start()
+
+	select {}
+}
+
+func alertHealthchecks() {
+	viper.BindEnv("HEALTHCHECKS_ENDPOINT")
+
+	url := viper.GetString("HEALTHCHECKS_ENDPOINT")
+
+	http.Get(url)
+}
+
+func run() {
+	viper.SetEnvPrefix("BOT")
 	viper.BindEnv("START_DATE")
 	startDate, err := time.Parse("2006-01", viper.GetString("START_DATE"))
 	if err != nil {
@@ -79,7 +103,6 @@ func main() {
 	}
 
 	sendJobsEmail(jobs)
-
 }
 
 func sendJobsEmail(jobs []Job) {
@@ -103,7 +126,7 @@ func sendJobsEmail(jobs []Job) {
 
 	var email strings.Builder
 
-	email.WriteString("Subject: Hackernews Jobs [")
+	email.WriteString("Subject: New job(s) [")
 	email.WriteString(strconv.Itoa(len(jobs)))
 	email.WriteString("]\r\n")
 	email.WriteString("From: " + mailFrom + "\r\n")
@@ -116,7 +139,7 @@ func sendJobsEmail(jobs []Job) {
 		email.WriteString("<br><a href=\"https://news.ycombinator.com/" + job.commentLink + "\">View post</a>")
 		email.WriteString("<br><br>")
 	}
-	
+
 	auth := smtp.PlainAuth("", smtpUsername, smtpPassword, smtpHost)
 
 	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, mailFrom, []string{mailTo}, []byte(email.String()))
@@ -189,8 +212,8 @@ func getJobs(link string, jobsCache JobsCache) []Job {
 			_, found := jobsCache.Jobs[commentLink]
 			if !found {
 				jobs = append(jobs, Job{
-					text:      strings.TrimSpace(text),
-					monthYear: monthYear,
+					text:        strings.TrimSpace(text),
+					monthYear:   monthYear,
 					commentLink: commentLink,
 				})
 				jobsCache.Jobs[commentLink] = 1
