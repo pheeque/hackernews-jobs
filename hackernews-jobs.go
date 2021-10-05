@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/smtp"
@@ -16,6 +14,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/viper"
+	"github.com/xujiajun/nutsdb"
 )
 
 const JOBS_CACHE_FILENAME string = "jobs-cache.json"
@@ -55,6 +54,15 @@ func alertHealthchecks() {
 
 func run() {
 	viper.SetEnvPrefix("BOT")
+
+	opt := nutsdb.DefaultOptions
+	opt.Dir = "bin"
+	db, err := nutsdb.Open(opt)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
 	viper.BindEnv("START_DATE")
 	startDate, err := time.Parse("2006-01", viper.GetString("START_DATE"))
 	if err != nil {
@@ -98,8 +106,7 @@ func run() {
 	//Get jobs from links
 	var jobs []Job
 	for _, link := range links {
-		jobsCache := getJobsCache()
-		jobs = append(jobs, getJobs(link, jobsCache)...)
+		jobs = append(jobs, getJobs(link, db)...)
 	}
 
 	sendJobsEmail(jobs)
@@ -150,34 +157,7 @@ func sendJobsEmail(jobs []Job) {
 	log.Printf("%d job(s) emailed", len(jobs))
 }
 
-func getJobsCache() JobsCache {
-	jsonFile, err := os.Open(JOBS_CACHE_FILENAME)
-	if err != nil {
-		return JobsCache{Jobs: map[string]int{}}
-	}
-	defer jsonFile.Close()
-
-	byteValue, err := ioutil.ReadAll(jsonFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var jobs JobsCache
-	json.Unmarshal([]byte(byteValue), &jobs)
-
-	return jobs
-}
-
-func saveJobsCache(jobsCache JobsCache) {
-	b, err := json.Marshal(jobsCache)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	ioutil.WriteFile(JOBS_CACHE_FILENAME, b, 0644)
-}
-
-func getJobs(link string, jobsCache JobsCache) []Job {
+func getJobs(link string, db *nutsdb.DB) []Job {
 	jobs := make([]Job, 0)
 
 	res, err := http.Get(link)
@@ -195,7 +175,7 @@ func getJobs(link string, jobsCache JobsCache) []Job {
 	}
 
 	pageTitle := doc.Find("table.fatitem .athing a.storylink").Text()
-	re := regexp.MustCompile("\\(.+\\)")
+	re := regexp.MustCompile(`\(.+\)`)
 	monthYear := re.FindString(pageTitle)
 
 	doc.Find(".athing").Each(func(i int, s *goquery.Selection) {
@@ -209,19 +189,43 @@ func getJobs(link string, jobsCache JobsCache) []Job {
 		re := regexp.MustCompile("SEEKING.+FREELANCER")
 		if re.MatchString(text) {
 			//if comment has not being saved before
-			_, found := jobsCache.Jobs[commentLink]
-			if !found {
+			if !inCache(db, commentLink) {
 				jobs = append(jobs, Job{
 					text:        strings.TrimSpace(text),
 					monthYear:   monthYear,
 					commentLink: commentLink,
 				})
-				jobsCache.Jobs[commentLink] = 1
+				addToCache(db, commentLink)
 			}
 		}
 	})
 
-	saveJobsCache(jobsCache)
-
 	return jobs
+}
+
+func addToCache(db *nutsdb.DB, link string) {
+	if err := db.Update(
+		func(tx *nutsdb.Tx) error {
+			bucket := "posts"
+			key := []byte("links")
+			return tx.SAdd(bucket, key, []byte(link))
+		}); err != nil {
+			log.Print(err)
+	}
+}
+
+func inCache(db *nutsdb.DB, link string) bool {
+	result := false
+	db.View(
+		func(tx *nutsdb.Tx) error {
+			if ok, err := tx.SIsMember("posts", []byte("links"), []byte(link)); err != nil {
+				result = false
+				return err
+			} else {
+				result = ok
+			}
+			return nil
+		});
+
+	return result
 }
