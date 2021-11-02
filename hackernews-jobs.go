@@ -85,7 +85,7 @@ func run() {
 
 	links := make([]string, 0)
 
-	doc.Find(".athing .storylink").Each(func(i int, s *goquery.Selection) {
+	doc.Find(".athing .titlelink").Each(func(i int, s *goquery.Selection) {
 		date := regexp.MustCompile(`\(.*\)$`).FindString(s.Text())
 		date = date[1 : len(date)-1]
 		storyDate, err := time.Parse("January 2006", date)
