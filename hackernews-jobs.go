@@ -85,7 +85,13 @@ func run() {
 
 	links := make([]string, 0)
 
-	doc.Find(".athing .titlelink").Each(func(i int, s *goquery.Selection) {
+	var selector = ".athing .titlelink"
+	if doc.Find(selector).Length() == 0 {
+		sendEmail("Hackernews bot selectors issue", "submissions list is empty")
+		return
+	}
+
+	doc.Find(selector).Each(func(i int, s *goquery.Selection) {
 		date := regexp.MustCompile(`\(.*\)$`).FindString(s.Text())
 		date = date[1 : len(date)-1]
 		storyDate, err := time.Parse("January 2006", date)
@@ -174,9 +180,16 @@ func getJobs(link string, db *nutsdb.DB) []Job {
 		log.Fatal(err)
 	}
 
-	pageTitle := doc.Find("table.fatitem .athing a.storylink").Text()
+	pageTitle := doc.Find("table.fatitem .athing a.titlelink").Text()
 	re := regexp.MustCompile(`\(.+\)`)
 	monthYear := re.FindString(pageTitle)
+
+
+	var selector = ".athing .comment"
+	if doc.Find(selector).Length() == 0 {
+		sendEmail("Hackernews bot selectors issue", "page comments empty")
+		return jobs //empty
+	}
 
 	doc.Find(".athing").Each(func(i int, s *goquery.Selection) {
 		text, err := s.Find(".comment").Html()
@@ -228,4 +241,39 @@ func inCache(db *nutsdb.DB, link string) bool {
 		});
 
 	return result
+}
+
+func sendEmail(subject string, content string) {
+	viper.BindEnv("MAIL_HOST")
+	viper.BindEnv("MAIL_PORT")
+	viper.BindEnv("MAIL_USERNAME")
+	viper.BindEnv("MAIL_PASSWORD")
+	viper.BindEnv("MAIL_FROM")
+	viper.BindEnv("MAIL_TO")
+
+	smtpHost := viper.GetString("MAIL_HOST")
+	smtpPort := viper.GetString("MAIL_PORT")
+	smtpUsername := viper.GetString("MAIL_USERNAME")
+	smtpPassword := viper.GetString("MAIL_PASSWORD")
+	mailFrom := viper.GetString("MAIL_FROM")
+	mailTo := viper.GetString("MAIL_TO")
+
+	var email strings.Builder
+
+	email.WriteString("Subject: ")
+	email.WriteString(subject)
+	email.WriteString("\r\n")
+	email.WriteString("From: " + mailFrom + "\r\n")
+	email.WriteString("To: " + mailTo + "\r\n")
+	email.WriteString("MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\r\n")
+	email.WriteString("\r\n")
+	
+	email.WriteString(content)
+
+	auth := smtp.PlainAuth("", smtpUsername, smtpPassword, smtpHost)
+
+	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, mailFrom, []string{mailTo}, []byte(email.String()))
+	if err != nil {
+		fmt.Println(err)
+	}
 }
