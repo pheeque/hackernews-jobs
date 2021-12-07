@@ -32,12 +32,22 @@ type Job struct {
 func main() {
 	log.SetOutput(os.Stdout)
 
+	viper.SetEnvPrefix("BOT")
+
+	viper.BindEnv("RUNNING")
+	viper.BindEnv("CRON_SCHEDULE")
+
+	cronSchedule := viper.GetString("CRON_SCHEDULE") //"@every 1h"
+	running := viper.GetString("RUNNING")
+
 	log.Print("started")
 	c := cron.New()
-	c.AddFunc("@every 1h", func() {
-		run()
+	c.AddFunc(cronSchedule, func() {
+		if running == "1" {
+			run()
 
-		alertHealthchecks()
+			alertHealthchecks()
+		}
 	})
 	c.Start()
 
